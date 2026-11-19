@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard APS</title>
+<style>
+  :root { --bg:#f6f6f6; --fg:#222; --card:#fff; --accent:#0696d7; --muted:#666; --line:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1b1b1b; --fg:#eee; --card:#262626; --muted:#aaa; --line:#3a3a3a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--card); border-bottom:1px solid var(--line); }
+  main { max-width:900px; margin:24px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:24px; margin-bottom:16px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:10px 18px; font:inherit; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .muted { color:var(--muted); }
+  .error { color:#c62828; }
+  pre { overflow:auto; background:var(--bg); padding:12px; border-radius:6px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Dashboard APS</strong>
+  <div id="userBox" hidden>
+    <span id="userName" class="muted"></span>
+    <button class="secondary" id="logoutBtn">Cerrar sesión</button>
+  </div>
+</header>
+
+<main>
+  <!-- Pantalla de acceso: lo único visible sin autenticar -->
+  <section id="loginView" class="card">
+    <h2>Inicia sesión con tu cuenta Autodesk</h2>
+    <p class="muted">La app no contiene ningún secreto. Te autenticas tú y el token se guarda solo en esta pestaña.</p>
+    <button id="loginBtn">Iniciar sesión</button>
+    <p id="authError" class="error" hidden></p>
+  </section>
+
+  <!-- Aplicación: solo se muestra con sesión válida -->
+  <section id="appView" hidden>
+    <div class="card">
+      <h2>Prueba de conexión</h2>
+      <button id="testBtn">Verificar acceso al proyecto</button>
+      <pre id="output">Sin datos todavía.</pre>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ============ CONFIGURACIÓN ============
+   El client ID es público por diseño. NO añadas nunca un client secret.
+   En APS (Apps > tu app) crea la app como "Single Page Application" y registra
+   como Callback URL exactamente la URL de esta página en GitHub Pages
+   (p. ej. https://TU_USUARIO.github.io/TU_REPO/). Para pruebas locales añade
+   también http://localhost:8000/ */
+const CONFIG = {
+  clientId: "tu7iN8iEEsDtOzI3Bl1UBbiGYczE4OQ6XSAxXlXY1AASRa2d",
+  scopes: "data:read user-profile:read",
+};
+const AUTH_URL  = "https://developer.api.autodesk.com/authentication/v2/authorize";
+const TOKEN_URL = "https://developer.api.autodesk.com/authentication/v2/token";
+const REDIRECT  = location.origin + location.pathname;
+
+const $ = id => document.getElementById(id);
+const store = sessionStorage;
+
+/* ---------- PKCE ---------- */
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const randomString = (n = 64) => b64url(crypto.getRandomValues(new Uint8Array(n)));
+async function challengeFrom(verifier) {
+  return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+}
+
+/* ---------- Flujo de login ---------- */
+async function login() {
+  if (!CONFIG.clientId) return showError("Falta configurar el client ID en el código.");
+  const verifier = randomString();
+  const state = randomString(16);
+  store.setItem("pkce_verifier", verifier);
+  store.setItem("pkce_state", state);
+  const p = new URLSearchParams({
+    response_type: "code",
+    client_id: CONFIG.clientId,
+    redirect_uri: REDIRECT,
+    scope: CONFIG.scopes,
+    state,
+    code_challenge: await challengeFrom(verifier),
+    code_challenge_method: "S256",
+  });
+  location.assign(`${AUTH_URL}?${p}`);
+}
+
+async function tokenRequest(params) {
+  const r = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: new URLSearchParams({ client_id: CONFIG.clientId, ...params }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.developerMessage || data.error_description || data.error || r.statusText);
+  store.setItem("access_token", data.access_token);
+  store.setItem("expires_at", String(Date.now() + (data.expires_in - 60) * 1000));
+  if (data.refresh_token) store.setItem("refresh_token", data.refresh_token);
+}
+
+async function handleCallback() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("code") && !q.has("error")) return;
+  history.replaceState({}, "", REDIRECT);               // limpia la URL
+  if (q.has("error")) throw new Error(q.get("error_description") || q.get("error"));
+  if (q.get("state") !== store.getItem("pkce_state")) throw new Error("State no válido (posible CSRF).");
+  await tokenRequest({
+    grant_type: "authorization_code",
+    code: q.get("code"),
+    redirect_uri: REDIRECT,
+    code_verifier: store.getItem("pkce_verifier"),
+  });
+  store.removeItem("pkce_verifier"); store.removeItem("pkce_state");
+}
+
+async function getToken() {
+  if (Date.now() < Number(store.getItem("expires_at") || 0)) return store.getItem("access_token");
+  const rt = store.getItem("refresh_token");
+  if (!rt) return null;
+  try { await tokenRequest({ grant_type: "refresh_token", refresh_token: rt }); }
+  catch { logout(false); return null; }
+  return store.getItem("access_token");
+}
+
+function logout(reload = true) {
+  store.clear();
+  if (reload) location.reload();
+}
+
+/* ---------- Llamadas autenticadas ---------- */
+/* Restricción al proyecto: solo se permiten URLs de este proyecto, el listado
+   de hubs (necesario para localizar el hub) y el perfil de usuario. */
+const PROJECT_ID = "b.34ae8ac2-7208-4a84-a025-d3a5213c2deb";
+const ALLOWED = [
+  u => u.pathname.includes(`/projects/${PROJECT_ID}`),
+  u => u.pathname.includes(`/projects/${PROJECT_ID.replace(/^b\./, "")}`), // IDs ACC sin prefijo
+  u => u.href === "https://developer.api.autodesk.com/project/v1/hubs",
+  u => u.href === "https://api.userprofile.autodesk.com/userinfo",
+];
+async function api(url) {
+  const u = new URL(url);
+  if (!ALLOWED.some(rule => rule(u))) throw new Error("Bloqueado: la app solo puede acceder al proyecto configurado.");
+  const token = await getToken();
+  if (!token) { showLogin(); throw new Error("Sesión caducada."); }
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+/* ---------- UI ---------- */
+function showError(msg) { $("authError").textContent = msg; $("authError").hidden = false; }
+function showLogin() { $("loginView").hidden = false; $("appView").hidden = true; $("userBox").hidden = true; }
+async function showApp() {
+  $("loginView").hidden = true; $("appView").hidden = false; $("userBox").hidden = false;
+  try {
+    const u = await api("https://api.userprofile.autodesk.com/userinfo");
+    $("userName").textContent = u.name || u.email || "";
+  } catch {}
+}
+
+$("loginBtn").onclick = login;
+$("logoutBtn").onclick = () => logout();
+$("testBtn").onclick = async () => {
+  $("output").textContent = "Cargando…";
+  try {
+    const hubs = (await api("https://developer.api.autodesk.com/project/v1/hubs")).data;
+    for (const h of hubs) {
+      try {
+        const p = await api(`https://developer.api.autodesk.com/project/v1/hubs/${h.id}/projects/${PROJECT_ID}`);
+        $("output").textContent = JSON.stringify({ hubId: h.id, projectId: p.data.id, name: p.data.attributes.name }, null, 2);
+        return;
+      } catch {}
+    }
+    $("output").textContent = "No tienes acceso a este proyecto con esta cuenta.";
+  } catch (e) { $("output").textContent = "Error: " + e.message; }
+};
+
+(async function init() {
+  try { await handleCallback(); } catch (e) { showLogin(); return showError(e.message); }
+  (await getToken()) ? showApp() : showLogin();
+})();
+</script>
+</body>
+</html>
