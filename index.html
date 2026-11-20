@@ -168,10 +168,28 @@
         </div>
       </div>
 
+      <div class="card" id="sheetsCard">
+        <span class="label">Sheets</span>
+        <h2>PDFs published to Sheets</h2>
+        <p class="sub">Based on the splitting state of the current version of each PDF. To be validated against what Docs shows.</p>
+        <table>
+          <thead><tr><th id="thSheets">Subfolder</th><th class="n">Published</th><th class="n">PDFs</th><th class="n">%</th><th></th></tr></thead>
+          <tbody id="sheetsBody"></tbody>
+          <tfoot id="sheetsFoot"></tfoot>
+        </table>
+        <p class="note" id="sheetsStates"></p>
+        <details style="margin-top:16px"><summary class="label" style="cursor:pointer">PDF list</summary>
+          <table>
+            <thead><tr><th>File</th><th>Uploader</th><th>Splitting state</th></tr></thead>
+            <tbody id="sheetsList"></tbody>
+          </table>
+        </details>
+      </div>
+
       <div class="card">
         <span class="label">Diagnostics</span>
-        <h2>Published to Sheets</h2>
-        <p class="sub">Temporary tools to find out how the API exposes "published to Sheets" for a PDF. Run both and send me the output.</p>
+        <h2>Sheets API</h2>
+        <p class="sub">Temporary tool to inspect the Sheets API for this project.</p>
         <button class="btn" id="diagPdf">Inspect one PDF</button>
         <button class="btn ghost" id="diagSheets">Inspect Sheets API</button>
         <pre id="diagOut" class="note" style="white-space:pre-wrap;max-height:360px;overflow:auto"></pre>
@@ -299,6 +317,7 @@ async function listFolder(folderUrn) {
           user: a.createUserName || a.lastModifiedUserName || "Unknown",
           ext: extOf(x.attributes.displayName, a.fileType),
           size: Number(a.storageSize) || 0,
+          split: a.extension?.data?.splittingState || null,
         });
       }
     }
@@ -458,6 +477,19 @@ function render() {
     $("attrFoot").innerHTML = footRow(filled, vis.length, "blue");
   }
 
+  // published to Sheets (PDFs only)
+  $("thSheets").textContent = label;
+  const pdfs = vis.filter(f => f.ext === "pdf");
+  const isPub = f => !!f.split && f.split !== "NOT_SPLIT";
+  const pubN = pdfs.filter(isPub).length;
+  $("sheetsBody").innerHTML = tableRows(rankRows(pdfs, isPub), "warm");
+  $("sheetsFoot").innerHTML = footRow(pubN, pdfs.length, "warm");
+  const sc = {};
+  pdfs.forEach(f => { const k = f.split || "(none)"; sc[k] = (sc[k] || 0) + 1; });
+  $("sheetsStates").textContent = "Splitting states found: " + (Object.entries(sc).map(([k, v]) => `${k} (${v})`).join(", ") || "none");
+  $("sheetsList").innerHTML = [...pdfs].sort((a, b) => isPub(a) - isPub(b) || a.name.localeCompare(b.name))
+    .map(f => `<tr><td>${esc(f.name)}</td><td>${esc(f.user)}</td><td>${esc(f.split || "(none)")}</td></tr>`).join("");
+
   // donuts (react to uploader filter, not to their own extension filter)
   const forDonut = byUser(files);
   donut($("donutCount"), forDonut, () => 1, n => String(n), "files");
@@ -524,11 +556,19 @@ $("diagPdf").onclick = async () => {
 };
 $("diagSheets").onclick = async () => {
   const out = $("diagOut"); out.textContent = "Loading…";
-  const r = {};
-  for (const [k, p] of [["versionSets", "version-sets?limit=3"], ["sheets", "sheets?limit=3"], ["uploads", "uploads?limit=3"]]) {
-    try { r[k] = await api(`${BASE}/construction/sheets/v1/projects/${PID_RAW}/${p}`); }
-    catch (e) { r[k] = "Error: " + e.message; }
+  const r = {}, S = `${BASE}/construction/sheets/v1/projects/${PID_RAW}`;
+  const tryGet = async (k, p) => { try { r[k] = await api(`${S}/${p}`); } catch (e) { r[k] = "Error: " + e.message; } };
+  await tryGet("versionSets", "version-sets?limit=10");
+  await tryGet("uploads", "uploads?limit=10");
+  for (const vs of (r.versionSets?.results || []).slice(0, 2)) {
+    await tryGet("sheets_in_" + vs.name, `version-sets/${vs.id}/sheets?limit=3`);
   }
+  const up = r.uploads?.results?.[0];
+  if (up) {
+    await tryGet("upload_detail", `uploads/${up.id}`);
+    await tryGet("upload_review_sheets", `uploads/${up.id}/review-sheets?limit=3`);
+  }
+  await tryGet("sheets_current", "sheets?filter[isCurrent]=true&limit=3");
   out.textContent = JSON.stringify(r, null, 2);
 };
 document.addEventListener("click", e => {
