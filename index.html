@@ -168,35 +168,6 @@
           <div class="donut" id="donutSize"></div>
         </div>
       </div>
-
-      <div class="card" id="sheetsCard" hidden>
-        <span class="label">Sheets</span>
-        <h2>PDFs published to Sheets</h2>
-        <p class="sub">Based on the splitting state of the current version of each PDF. To be validated against what Docs shows.</p>
-        <table>
-          <thead><tr><th id="thSheets">Subfolder</th><th class="n">Published</th><th class="n">PDFs</th><th class="n">%</th><th></th></tr></thead>
-          <tbody id="sheetsBody"></tbody>
-          <tfoot id="sheetsFoot"></tfoot>
-        </table>
-        <p class="note" id="sheetsStates"></p>
-        <details style="margin-top:16px"><summary class="label" style="cursor:pointer">PDF list</summary>
-          <table>
-            <thead><tr><th>File</th><th>Uploader</th><th>Splitting state</th></tr></thead>
-            <tbody id="sheetsList"></tbody>
-          </table>
-        </details>
-      </div>
-
-      <div class="card">
-        <span class="label">Diagnostics</span>
-        <h2>Sheets API</h2>
-        <p class="sub">Temporary tool to inspect the Sheets API for this project.</p>
-        <p class="sub">Item ID of a PDF known to be published to Sheets:</p>
-        <input id="diagItem" value="urn:adsk.wipprod:dm.lineage:nWl0z1UfUZikbhh8GYreng" style="width:100%;font:14px var(--mono);padding:8px;border-radius:8px;border:1px solid var(--line);background:#000;color:#fff;margin-bottom:12px">
-        <button class="btn" id="diagPdf">Inspect this item</button>
-        <button class="btn ghost" id="diagSheets">Inspect Sheets API</button>
-        <pre id="diagOut" class="note" style="white-space:pre-wrap;max-height:360px;overflow:auto"></pre>
-      </div>
     </div>
   </section>
 </main>
@@ -320,7 +291,6 @@ async function listFolder(folderUrn) {
           user: a.createUserName || a.lastModifiedUserName || "Unknown",
           ext: extOf(x.attributes.displayName, a.fileType),
           size: Number(a.storageSize) || 0,
-          split: a.extension?.data?.splittingState || null,
         });
       }
     }
@@ -480,19 +450,6 @@ function render() {
     $("attrFoot").innerHTML = footRow(filled, vis.length, "blue");
   }
 
-  // published to Sheets (PDFs only)
-  $("thSheets").textContent = label;
-  const pdfs = vis.filter(f => f.ext === "pdf");
-  const isPub = f => !!f.split && f.split !== "NOT_SPLIT";
-  const pubN = pdfs.filter(isPub).length;
-  $("sheetsBody").innerHTML = tableRows(rankRows(pdfs, isPub), "warm");
-  $("sheetsFoot").innerHTML = footRow(pubN, pdfs.length, "warm");
-  const sc = {};
-  pdfs.forEach(f => { const k = f.split || "(none)"; sc[k] = (sc[k] || 0) + 1; });
-  $("sheetsStates").textContent = "Splitting states found: " + (Object.entries(sc).map(([k, v]) => `${k} (${v})`).join(", ") || "none");
-  $("sheetsList").innerHTML = [...pdfs].sort((a, b) => isPub(a) - isPub(b) || a.name.localeCompare(b.name))
-    .map(f => `<tr><td>${esc(f.name)}</td><td>${esc(f.user)}</td><td>${esc(f.split || "(none)")}</td></tr>`).join("");
-
   // donuts (react to uploader filter, not to their own extension filter)
   const forDonut = byUser(files);
   donut($("donutCount"), forDonut, () => 1, n => String(n), "files");
@@ -548,36 +505,6 @@ $("loginBtn").onclick = login;
 $("logoutBtn").onclick = () => logout();
 $("scanBtn").onclick = scan;
 $("attrSelect").onchange = render;
-$("diagPdf").onclick = async () => {
-  const out = $("diagOut"), item = encodeURIComponent($("diagItem").value.trim());
-  out.textContent = "Loading…";
-  const r = {}, P = `${BASE}/data/v1/projects/${PID}`;
-  const slim = d => JSON.parse(JSON.stringify(d, (k, v) => k === "customAttributes" || k === "links" ? undefined : v));
-  const tryGet = async (k, url, f = x => x) => { try { r[k] = f(await api(url)); } catch (e) { r[k] = "Error: " + e.message; } };
-  await tryGet("item", `${P}/items/${item}`, d => slim(d.data));
-  await tryGet("tip", `${P}/items/${item}/tip`, d => slim(d.data));
-  await tryGet("refs", `${P}/items/${item}/relationships/refs`);
-  await tryGet("tipRefs", `${P}/items/${item}/tip/relationships/refs`);
-  await tryGet("parent", `${P}/items/${item}/parent`, d => slim(d.data));
-  out.textContent = JSON.stringify(r, null, 2);
-};
-$("diagSheets").onclick = async () => {
-  const out = $("diagOut"); out.textContent = "Loading…";
-  const r = {}, S = `${BASE}/construction/sheets/v1/projects/${PID_RAW}`;
-  const tryGet = async (k, p) => { try { r[k] = await api(`${S}/${p}`); } catch (e) { r[k] = "Error: " + e.message; } };
-  await tryGet("versionSets", "version-sets?limit=10");
-  await tryGet("uploads", "uploads?limit=10");
-  for (const vs of (r.versionSets?.results || []).slice(0, 2)) {
-    await tryGet("sheets_in_" + vs.name, `version-sets/${vs.id}/sheets?limit=3`);
-  }
-  const up = r.uploads?.results?.[0];
-  if (up) {
-    await tryGet("upload_detail", `uploads/${up.id}`);
-    await tryGet("upload_review_sheets", `uploads/${up.id}/review-sheets?limit=3`);
-  }
-  await tryGet("sheets_current", "sheets?filter[isCurrent]=true&limit=3");
-  out.textContent = JSON.stringify(r, null, 2);
-};
 document.addEventListener("click", e => {
   const g = e.target.closest("#groupSeg button");
   if (g) { state.groupBy = g.dataset.g; return render(); }
