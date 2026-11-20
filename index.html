@@ -3,28 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dashboard APS</title>
+<title>Dashboard de progreso</title>
 <style>
-  :root { --bg:#f6f6f6; --fg:#222; --card:#fff; --accent:#0696d7; --muted:#666; --line:#ddd; }
+  :root { --bg:#f6f6f6; --fg:#222; --card:#fff; --accent:#0696d7; --ok:#2e9e5b; --muted:#666; --line:#ddd; }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#1b1b1b; --fg:#eee; --card:#262626; --muted:#aaa; --line:#3a3a3a; }
   }
   * { box-sizing:border-box; }
   body { margin:0; font:16px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
   header { display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--card); border-bottom:1px solid var(--line); }
-  main { max-width:900px; margin:24px auto; padding:0 16px; }
+  main { max-width:960px; margin:24px auto; padding:0 16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:24px; margin-bottom:16px; }
+  h2 { margin-top:0; }
   button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:10px 18px; font:inherit; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
   button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  select { font:inherit; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); max-width:100%; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th.n, td.n { text-align:right; white-space:nowrap; }
+  .bar { background:var(--line); border-radius:4px; height:12px; min-width:120px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:var(--ok); }
+  .bar.blue > span { background:var(--accent); }
   .muted { color:var(--muted); }
   .error { color:#c62828; }
-  pre { overflow:auto; background:var(--bg); padding:12px; border-radius:6px; }
+  tfoot td { font-weight:600; }
   [hidden] { display:none !important; }
 </style>
 </head>
 <body>
 <header>
-  <strong>Dashboard APS</strong>
+  <strong>Dashboard de progreso</strong>
   <div id="userBox" hidden>
     <span id="userName" class="muted"></span>
     <button class="secondary" id="logoutBtn">Cerrar sesión</button>
@@ -32,7 +41,6 @@
 </header>
 
 <main>
-  <!-- Pantalla de acceso: lo único visible sin autenticar -->
   <section id="loginView" class="card">
     <h2>Inicia sesión con tu cuenta Autodesk</h2>
     <p class="muted">La app no contiene ningún secreto. Te autenticas tú y el token se guarda solo en esta pestaña.</p>
@@ -40,57 +48,70 @@
     <p id="authError" class="error" hidden></p>
   </section>
 
-  <!-- Aplicación: solo se muestra con sesión válida -->
   <section id="appView" hidden>
     <div class="card">
-      <h2>Prueba de conexión</h2>
-      <button id="testBtn">Verificar acceso al proyecto</button>
-      <pre id="output">Sin datos todavía.</pre>
+      <h2>Carga de datos</h2>
+      <p class="muted">Analiza la carpeta configurada y todas sus subcarpetas (última versión de cada fichero).</p>
+      <button id="scanBtn">Analizar carpeta</button>
+      <p id="progress" class="muted"></p>
+      <p id="scanError" class="error" hidden></p>
+    </div>
+
+    <div class="card" id="approvalCard" hidden>
+      <h2>Ficheros aprobados por subcarpeta</h2>
+      <p class="muted">Estado de aprobación según Reviews (Approved).</p>
+      <table>
+        <thead><tr><th>Subcarpeta</th><th class="n">Aprobados</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
+        <tbody id="approvalBody"></tbody>
+        <tfoot id="approvalFoot"></tfoot>
+      </table>
+    </div>
+
+    <div class="card" id="attrCard" hidden>
+      <h2>Metadatos rellenos por subcarpeta</h2>
+      <label for="attrSelect" class="muted">Atributo:</label>
+      <select id="attrSelect"></select>
+      <table>
+        <thead><tr><th>Subcarpeta</th><th class="n">Rellenos</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
+        <tbody id="attrBody"></tbody>
+        <tfoot id="attrFoot"></tfoot>
+      </table>
     </div>
   </section>
 </main>
 
 <script>
 /* ============ CONFIGURACIÓN ============
-   El client ID es público por diseño. NO añadas nunca un client secret.
-   En APS (Apps > tu app) crea la app como "Single Page Application" y registra
-   como Callback URL exactamente la URL de esta página en GitHub Pages
-   (p. ej. https://TU_USUARIO.github.io/TU_REPO/). Para pruebas locales añade
-   también http://localhost:8000/ */
+   El client ID es público por diseño. NO añadas nunca un client secret. */
 const CONFIG = {
   clientId: "tu7iN8iEEsDtOzI3Bl1UBbiGYczE4OQ6XSAxXlXY1AASRa2d",
   scopes: "data:read user-profile:read",
+  projectId: "b.34ae8ac2-7208-4a84-a025-d3a5213c2deb",
+  rootFolder: "urn:adsk.wipprod:fs.folder:co.bwM0f3HTSOOjVDhYP7uQQA",
+  concurrency: 6,
 };
-const AUTH_URL  = "https://developer.api.autodesk.com/authentication/v2/authorize";
-const TOKEN_URL = "https://developer.api.autodesk.com/authentication/v2/token";
+const BASE = "https://developer.api.autodesk.com";
+const AUTH_URL  = BASE + "/authentication/v2/authorize";
+const TOKEN_URL = BASE + "/authentication/v2/token";
 const REDIRECT  = location.origin + location.pathname;
+const PID = CONFIG.projectId;
+const PID_RAW = PID.replace(/^b\./, "");
 
 const $ = id => document.getElementById(id);
 const store = sessionStorage;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 /* ---------- PKCE ---------- */
-const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
-  .replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const randomString = (n = 64) => b64url(crypto.getRandomValues(new Uint8Array(n)));
-async function challengeFrom(verifier) {
-  return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-}
+async function challengeFrom(v) { return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v))); }
 
-/* ---------- Flujo de login ---------- */
 async function login() {
-  if (!CONFIG.clientId) return showError("Falta configurar el client ID en el código.");
-  const verifier = randomString();
-  const state = randomString(16);
-  store.setItem("pkce_verifier", verifier);
-  store.setItem("pkce_state", state);
+  const verifier = randomString(), state = randomString(16);
+  store.setItem("pkce_verifier", verifier); store.setItem("pkce_state", state);
   const p = new URLSearchParams({
-    response_type: "code",
-    client_id: CONFIG.clientId,
-    redirect_uri: REDIRECT,
-    scope: CONFIG.scopes,
-    state,
-    code_challenge: await challengeFrom(verifier),
-    code_challenge_method: "S256",
+    response_type: "code", client_id: CONFIG.clientId, redirect_uri: REDIRECT,
+    scope: CONFIG.scopes, state, code_challenge: await challengeFrom(verifier), code_challenge_method: "S256",
   });
   location.assign(`${AUTH_URL}?${p}`);
 }
@@ -111,15 +132,10 @@ async function tokenRequest(params) {
 async function handleCallback() {
   const q = new URLSearchParams(location.search);
   if (!q.has("code") && !q.has("error")) return;
-  history.replaceState({}, "", REDIRECT);               // limpia la URL
+  history.replaceState({}, "", REDIRECT);
   if (q.has("error")) throw new Error(q.get("error_description") || q.get("error"));
   if (q.get("state") !== store.getItem("pkce_state")) throw new Error("State no válido (posible CSRF).");
-  await tokenRequest({
-    grant_type: "authorization_code",
-    code: q.get("code"),
-    redirect_uri: REDIRECT,
-    code_verifier: store.getItem("pkce_verifier"),
-  });
+  await tokenRequest({ grant_type: "authorization_code", code: q.get("code"), redirect_uri: REDIRECT, code_verifier: store.getItem("pkce_verifier") });
   store.removeItem("pkce_verifier"); store.removeItem("pkce_state");
 }
 
@@ -131,30 +147,172 @@ async function getToken() {
   catch { logout(false); return null; }
   return store.getItem("access_token");
 }
+function logout(reload = true) { store.clear(); if (reload) location.reload(); }
 
-function logout(reload = true) {
-  store.clear();
-  if (reload) location.reload();
-}
-
-/* ---------- Llamadas autenticadas ---------- */
-/* Restricción al proyecto: solo se permiten URLs de este proyecto, el listado
-   de hubs (necesario para localizar el hub) y el perfil de usuario. */
-const PROJECT_ID = "b.34ae8ac2-7208-4a84-a025-d3a5213c2deb";
+/* ---------- Llamadas autenticadas (restringidas al proyecto) ---------- */
 const ALLOWED = [
-  u => u.pathname.includes(`/projects/${PROJECT_ID}`),
-  u => u.pathname.includes(`/projects/${PROJECT_ID.replace(/^b\./, "")}`), // IDs ACC sin prefijo
-  u => u.href === "https://developer.api.autodesk.com/project/v1/hubs",
+  u => u.pathname.includes(`/projects/${PID}`) || u.pathname.includes(`/projects/${PID_RAW}`),
   u => u.href === "https://api.userprofile.autodesk.com/userinfo",
 ];
-async function api(url) {
+async function api(url, { method = "GET", body } = {}) {
   const u = new URL(url);
   if (!ALLOWED.some(rule => rule(u))) throw new Error("Bloqueado: la app solo puede acceder al proyecto configurado.");
-  const token = await getToken();
-  if (!token) { showLogin(); throw new Error("Sesión caducada."); }
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-  return r.json();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const token = await getToken();
+    if (!token) { showLogin(); throw new Error("Sesión caducada."); }
+    const r = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 429 || r.status === 503) {
+      await new Promise(res => setTimeout(res, (Number(r.headers.get("Retry-After")) || 2 ** attempt) * 1000));
+      continue;
+    }
+    if (!r.ok) { const e = new Error(`${r.status} ${r.statusText}`); e.status = r.status; throw e; }
+    return r.status === 204 ? null : r.json();
+  }
+  throw new Error("Demasiados reintentos (límite de peticiones).");
+}
+
+async function pool(items, worker, size = CONFIG.concurrency) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; await worker(items[idx], idx); }
+  }));
+}
+
+/* ---------- Data Management: carpetas y ficheros ---------- */
+async function listFolder(folderUrn) {
+  const folders = [], files = [];
+  let url = `${BASE}/data/v1/projects/${PID}/folders/${encodeURIComponent(folderUrn)}/contents?page[limit]=200`;
+  while (url) {
+    const d = await api(url);
+    const tipByItem = {};
+    for (const v of d.included || []) if (v.type === "versions") tipByItem[v.relationships?.item?.data?.id] = v.id;
+    for (const x of d.data || []) {
+      if (x.type === "folders") folders.push({ id: x.id, name: x.attributes.displayName || x.attributes.name });
+      else if (x.type === "items" && tipByItem[x.id]) files.push({ name: x.attributes.displayName, versionId: tipByItem[x.id] });
+    }
+    url = d.links?.next?.href || null;
+  }
+  return { folders, files };
+}
+
+async function collectFiles(folderUrn, out = []) {
+  const { folders, files } = await listFolder(folderUrn);
+  out.push(...files);
+  await pool(folders, f => collectFiles(f.id, out), 3);
+  return out;
+}
+
+/* ---------- Reviews: estado de aprobación ---------- */
+async function approvalOf(versionId) {
+  const enc = encodeURIComponent(versionId);
+  const base = `${BASE}/construction/reviews/v1/projects/${PID_RAW}/versions/${enc}`;
+  for (const suffix of ["approval-statuses", "approval-status"]) {
+    try {
+      const d = await api(`${base}/${suffix}`);
+      const res = d.results || [];
+      return res.length ? res[res.length - 1].approvalStatus?.value || null : null;
+    } catch (e) { if (e.status !== 404) throw e; }
+  }
+  return null;
+}
+
+/* ---------- Atributos personalizados ---------- */
+async function attributeDefinitions() {
+  const out = [];
+  let url = `${BASE}/bim360/docs/v1/projects/${PID_RAW}/folders/${encodeURIComponent(CONFIG.rootFolder)}/custom-attribute-definitions?limit=200`;
+  while (url) {
+    const d = await api(url);
+    out.push(...(d.results || []));
+    url = d.pagination?.nextUrl || null;
+  }
+  return out;
+}
+async function attributeValues(versionIds) {
+  const map = {}, chunks = [];
+  for (let i = 0; i < versionIds.length; i += 50) chunks.push(versionIds.slice(i, i + 50));
+  await pool(chunks, async urns => {
+    const d = await api(`${BASE}/bim360/docs/v1/projects/${PID_RAW}/versions:batch-get`, { method: "POST", body: { urns } });
+    for (const r of d.results || []) map[r.urn] = r.customAttributes || [];
+  }, 3);
+  return map;
+}
+
+/* ---------- Estado y render ---------- */
+let groups = [];      // [{ name, files:[{name, versionId}] }]
+let approvals = {};   // versionId -> "APPROVED" | ...
+let attrValues = {};  // versionId -> [{id,name,value}]
+let defs = [];
+
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
+function rowHtml(name, a, b, cls = "") {
+  const p = pct(a, b);
+  return `<tr><td>${esc(name)}</td><td class="n">${a}</td><td class="n">${b}</td><td class="n">${p}%</td>
+          <td><div class="bar ${cls}"><span style="width:${p}%"></span></div></td></tr>`;
+}
+function renderApproval() {
+  let A = 0, T = 0;
+  $("approvalBody").innerHTML = groups.map(g => {
+    const a = g.files.filter(f => approvals[f.versionId] === "APPROVED").length;
+    A += a; T += g.files.length;
+    return rowHtml(g.name, a, g.files.length);
+  }).join("");
+  $("approvalFoot").innerHTML = rowHtml("Total", A, T);
+  $("approvalCard").hidden = false;
+}
+function isFilled(versionId, def) {
+  const a = (attrValues[versionId] || []).find(x => String(x.id) === String(def.id) || x.name === def.name);
+  const v = a?.value;
+  return !(v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length));
+}
+function renderAttr() {
+  const def = defs.find(d => String(d.id) === $("attrSelect").value);
+  if (!def) return;
+  let A = 0, T = 0;
+  $("attrBody").innerHTML = groups.map(g => {
+    const a = g.files.filter(f => isFilled(f.versionId, def)).length;
+    A += a; T += g.files.length;
+    return rowHtml(g.name, a, g.files.length, "blue");
+  }).join("");
+  $("attrFoot").innerHTML = rowHtml("Total", A, T, "blue");
+}
+
+async function scan() {
+  const btn = $("scanBtn"), prog = $("progress"), err = $("scanError");
+  btn.disabled = true; err.hidden = true; $("approvalCard").hidden = true; $("attrCard").hidden = true;
+  try {
+    prog.textContent = "Leyendo carpetas…";
+    const root = await listFolder(CONFIG.rootFolder);
+    groups = [];
+    if (root.files.length) groups.push({ name: "(ficheros en la carpeta raíz)", files: root.files });
+    await pool(root.folders, async f => {
+      groups.push({ name: f.name, files: await collectFiles(f.id) });
+    }, 3);
+    groups.sort((a, b) => a.name.localeCompare(b.name, "es", { numeric: true }));
+    const all = [...new Set(groups.flatMap(g => g.files.map(f => f.versionId)))];
+
+    let done = 0, failed = 0;
+    approvals = {};
+    await pool(all, async v => {
+      try { approvals[v] = await approvalOf(v); } catch { failed++; }
+      prog.textContent = `Consultando aprobaciones… ${++done}/${all.length}`;
+    });
+    renderApproval();
+
+    prog.textContent = "Leyendo atributos…";
+    defs = await attributeDefinitions();
+    attrValues = await attributeValues(all);
+    $("attrSelect").innerHTML = defs.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join("");
+    $("attrCard").hidden = !defs.length;
+    if (defs.length) renderAttr();
+
+    prog.textContent = `Listo: ${all.length} ficheros en ${groups.length} grupos.` + (failed ? ` ${failed} sin estado de aprobación por error.` : "");
+  } catch (e) {
+    err.textContent = "Error: " + e.message; err.hidden = false; prog.textContent = "";
+  } finally { btn.disabled = false; }
 }
 
 /* ---------- UI ---------- */
@@ -162,28 +320,12 @@ function showError(msg) { $("authError").textContent = msg; $("authError").hidde
 function showLogin() { $("loginView").hidden = false; $("appView").hidden = true; $("userBox").hidden = true; }
 async function showApp() {
   $("loginView").hidden = true; $("appView").hidden = false; $("userBox").hidden = false;
-  try {
-    const u = await api("https://api.userprofile.autodesk.com/userinfo");
-    $("userName").textContent = u.name || u.email || "";
-  } catch {}
+  try { const u = await api("https://api.userprofile.autodesk.com/userinfo"); $("userName").textContent = u.name || u.email || ""; } catch {}
 }
-
 $("loginBtn").onclick = login;
 $("logoutBtn").onclick = () => logout();
-$("testBtn").onclick = async () => {
-  $("output").textContent = "Cargando…";
-  try {
-    const hubs = (await api("https://developer.api.autodesk.com/project/v1/hubs")).data;
-    for (const h of hubs) {
-      try {
-        const p = await api(`https://developer.api.autodesk.com/project/v1/hubs/${h.id}/projects/${PROJECT_ID}`);
-        $("output").textContent = JSON.stringify({ hubId: h.id, projectId: p.data.id, name: p.data.attributes.name }, null, 2);
-        return;
-      } catch {}
-    }
-    $("output").textContent = "No tienes acceso a este proyecto con esta cuenta.";
-  } catch (e) { $("output").textContent = "Error: " + e.message; }
-};
+$("scanBtn").onclick = scan;
+$("attrSelect").onchange = renderAttr;
 
 (async function init() {
   try { await handleCallback(); } catch (e) { showLogin(); return showError(e.message); }
