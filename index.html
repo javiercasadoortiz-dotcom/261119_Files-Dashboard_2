@@ -1,88 +1,188 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dashboard de progreso</title>
+<title>Project progress dashboard</title>
 <style>
-  :root { --bg:#f6f6f6; --fg:#222; --card:#fff; --accent:#0696d7; --ok:#2e9e5b; --muted:#666; --line:#ddd; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#1b1b1b; --fg:#eee; --card:#262626; --muted:#aaa; --line:#3a3a3a; }
+  :root {
+    --black:#000; --white:#fff; --yellow:#FFFF00; --warm:#D5D5CB; --slate:#666666; --slate300:#A3A3A3;
+    --blue:#1D91D0; --line:rgba(102,102,102,.55);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing:border-box; }
-  body { margin:0; font:16px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
-  header { display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--card); border-bottom:1px solid var(--line); }
-  main { max-width:960px; margin:24px auto; padding:0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:24px; margin-bottom:16px; }
-  h2 { margin-top:0; }
-  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:10px 18px; font:inherit; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); }
-  select { font:inherit; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); max-width:100%; }
-  table { width:100%; border-collapse:collapse; margin-top:12px; }
-  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:middle; }
-  th.n, td.n { text-align:right; white-space:nowrap; }
-  .bar { background:var(--line); border-radius:4px; height:12px; min-width:120px; overflow:hidden; }
-  .bar > span { display:block; height:100%; background:var(--ok); }
-  .bar.blue > span { background:var(--accent); }
-  .muted { color:var(--muted); }
-  .error { color:#c62828; }
-  tfoot td { font-weight:600; }
+  body {
+    margin:0; font:16px/1.5 Arial, Helvetica, sans-serif; color:var(--white); background:var(--black);
+    background-image:linear-gradient(rgba(102,102,102,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(102,102,102,.10) 1px, transparent 1px);
+    background-size:32px 32px;
+  }
+  header { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 32px; border-bottom:1px solid var(--line); background:var(--black); }
+  .brand { display:flex; align-items:center; gap:20px; }
+  .brand svg { height:40px; width:auto; display:block; fill:var(--white); }
+  .brand .sep { width:1px; height:32px; background:var(--line); }
+  .brand h1 { font-size:18px; margin:0; font-weight:700; letter-spacing:.2px; }
+  .label { font:12px/1 var(--mono); text-transform:uppercase; letter-spacing:1.5px; color:var(--warm); }
+  main { max-width:1200px; margin:32px auto; padding:0 24px; }
+  .card { background:var(--black); border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:24px; }
+  .card h2 { margin:8px 0 4px; font-size:22px; }
+  .sub { margin:0 0 16px; color:var(--warm); font-size:14px; }
+  button { font:inherit; cursor:pointer; }
+  .btn { background:var(--yellow); color:var(--black); border:0; border-radius:8px; padding:10px 20px; font-weight:700; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.ghost { background:transparent; color:var(--white); border:1px solid var(--line); font-weight:400; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { background:transparent; color:var(--warm); border:0; padding:8px 16px; font-size:14px; }
+  .seg button.on { background:var(--yellow); color:var(--black); font-weight:700; }
+  select { font:inherit; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--black); color:var(--white); max-width:100%; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
+  .kpi { border:1px solid var(--line); border-radius:12px; padding:16px 20px; }
+  .kpi b { display:block; font-size:36px; line-height:1.1; margin-top:8px; }
+  .kpi b.y { color:var(--yellow); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:24px; }
+  .chip { background:transparent; color:var(--white); border:1px solid var(--yellow); border-radius:999px; padding:4px 14px; font-size:14px; }
+  .chip::after { content:" ✕"; color:var(--yellow); }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:24px; }
+  table { width:100%; border-collapse:collapse; }
+  th { font:12px/1 var(--mono); text-transform:uppercase; letter-spacing:1px; color:var(--warm); text-align:left; padding:8px; border-bottom:1px solid var(--line); font-weight:400; }
+  td { padding:8px; border-bottom:1px dotted var(--line); vertical-align:middle; }
+  th.n, td.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  td.pct { font-weight:700; font-size:18px; }
+  tr[data-user] { cursor:pointer; }
+  tr[data-user]:hover td, tr.sel td { background:rgba(102,102,102,.25); }
+  .bar { background:rgba(102,102,102,.4); border-radius:4px; height:12px; min-width:120px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:var(--yellow); }
+  .bar.blue > span { background:var(--blue); }
+  .bar.warm > span { background:var(--warm); }
+  tfoot td { font-weight:700; border-bottom:0; }
+  .donut { display:flex; flex-wrap:wrap; gap:24px; align-items:center; }
+  .donut svg { width:220px; height:220px; flex:none; }
+  .donut circle.s { cursor:pointer; transition:opacity .15s; }
+  .legend { list-style:none; margin:0; padding:0; flex:1; min-width:180px; }
+  .legend li { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; cursor:pointer; }
+  .legend li.dim { opacity:.35; }
+  .legend i { width:12px; height:12px; border-radius:50%; flex:none; }
+  .legend span { margin-left:auto; color:var(--warm); font-variant-numeric:tabular-nums; }
+  .center { font:700 22px Arial; fill:#fff; text-anchor:middle; }
+  .center2 { font:12px var(--mono); fill:#D5D5CB; text-anchor:middle; text-transform:uppercase; letter-spacing:1px; }
+  .muted { color:var(--warm); }
+  .error { color:#F2520A; }
+  .note { font-size:12px; color:var(--slate300); margin-top:12px; }
   [hidden] { display:none !important; }
+  @media (max-width:600px){ header{padding:12px 16px;} main{padding:0 16px;} }
 </style>
 </head>
 <body>
 <header>
-  <strong>Dashboard de progreso</strong>
+  <div class="brand">
+    <svg viewBox="0 0 209 118" role="img" aria-label="Autodesk" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" overflow="hidden"><defs><clipPath id="clip0"><rect x="86" y="262" width="209" height="118"/></clipPath></defs><g clip-path="url(#clip0)" transform="translate(-86 -262)"><path d="M208.789 92.3834 201.197 92.3834 192.105 102.535 192.105 92.3834 185.733 92.3834 185.764 117.376 192.105 117.376 192.105 107.879 200.728 117.376 208.789 117.376 197.167 105.035 208.789 92.3834Z" transform="matrix(1.00018 0 0 1 86.0868 262)"/><path d="M206.6 133.532 200.789 132.876C197.385 132.501 196.54 131.659 196.54 130.502 196.54 129.22 198.29 128.066 201.696 128.066 204.976 128.066 206.694 129.283 207.006 131.127L213.262 131.127C212.948 125.848 208.513 122.567 202.046 122.567 194.359 122.567 190.486 125.628 190.486 131.032 190.486 135.432 193.048 137.499 198.359 138.063L204.254 138.683C206.502 138.932 207.532 139.808 207.532 140.933 207.532 142.213 206.034 143.369 202.41 143.369 198.22 143.369 196.544 142.307 196.255 140.183L190.136 140.183C190.417 145.931 194.167 148.868 202.194 148.868 209.537 148.868 213.631 145.651 213.631 140.807 213.631 136.588 211.192 134.074 206.6 133.532Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/><path d="M136.058 117.376 156.178 117.376 156.178 111.971 142.431 111.971 142.431 107.442 153.49 107.442 153.49 102.005 142.431 102.005 142.431 97.7883 156.178 97.7883 156.178 92.3834 136.058 92.3834 136.058 117.376Z" transform="matrix(1.00018 0 0 1 86.0868 262)"/><path d="M152.208 123.254 140.524 123.254 140.524 148.246 152.208 148.246C161.174 148.246 163.642 144.905 163.642 135.564 163.642 126.784 161.268 123.254 152.208 123.254ZM151.958 142.841 146.897 142.841 146.897 128.659 151.958 128.659C155.958 128.659 157.145 129.752 157.145 135.572 157.145 140.874 155.801 142.841 151.958 142.841Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/><path d="M123.216 122.567C114.124 122.567 109.407 128.158 109.407 135.687 109.407 143.216 114.124 148.873 123.216 148.873 132.308 148.873 137.055 143.248 137.055 135.687 137.055 128.127 132.338 122.567 123.216 122.567ZM123.216 143.248C118.499 143.248 115.905 140.374 115.905 135.687 115.905 131.095 118.499 128.19 123.216 128.19 127.965 128.19 130.528 131.095 130.528 135.687 130.528 140.374 127.965 143.248 123.216 143.248Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/><path d="M54.7672 97.7883 62.8264 97.7883 62.8264 117.376 69.2012 117.376 69.2012 97.7883 77.2289 97.7883 77.2289 92.3834 54.7672 92.3834 54.7672 97.7883Z" transform="matrix(1.00018 0 0 1 86.0868 262)"/><path d="M76.6339 138.683C76.6339 141.932 74.6354 143.244 71.229 143.244 67.917 143.244 65.7613 141.869 65.7613 138.683L65.7613 123.254 59.3886 123.254 59.3886 139.406C59.3886 146.623 65.8242 148.873 71.229 148.873 76.6339 148.873 83.0066 146.623 83.0066 139.406L83.0066 123.254 76.6339 123.254Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/><path d="M40.7376 123.254 31.1471 148.246 37.7377 148.246 39.4136 143.562 50.1207 143.562 51.7673 148.246 58.5779 148.246 48.8617 123.254ZM41.3095 138.249 44.8101 128.452 48.2521 138.249Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/><path d="M85.8913 101.017 148.699 61.9486 181.279 61.9486C182.329 61.9473 183.182 62.7981 183.183 63.8487 183.183 63.8501 183.183 63.8514 183.183 63.8529 183.183 64.7558 182.783 65.1559 182.282 65.4576L151.433 83.9472C149.428 85.1497 148.726 87.5568 148.726 89.3605L148.695 101.017 187.895 101.017 187.895 33.2776C187.895 31.9746 186.893 30.8706 185.381 30.8706L147.997 30.8706 85.3425 69.7605 85.3425 101.017Z" transform="matrix(1.00018 0 0 1 54.9341 231.129)"/></g></svg>
+    <span class="sep"></span>
+    <h1>Project progress dashboard</h1>
+  </div>
   <div id="userBox" hidden>
     <span id="userName" class="muted"></span>
-    <button class="secondary" id="logoutBtn">Cerrar sesión</button>
+    <button class="btn ghost" id="logoutBtn">Sign out</button>
   </div>
 </header>
 
 <main>
   <section id="loginView" class="card">
-    <h2>Inicia sesión con tu cuenta Autodesk</h2>
-    <p class="muted">La app no contiene ningún secreto. Te autenticas tú y el token se guarda solo en esta pestaña.</p>
-    <button id="loginBtn">Iniciar sesión</button>
+    <span class="label">Access</span>
+    <h2>Sign in with your Autodesk account</h2>
+    <p class="sub">This app contains no secrets. You authenticate yourself, and the token stays in this tab only.</p>
+    <button class="btn" id="loginBtn">Sign in</button>
     <p id="authError" class="error" hidden></p>
   </section>
 
   <section id="appView" hidden>
     <div class="card">
-      <h2>Carga de datos</h2>
-      <p class="muted">Analiza la carpeta configurada y todas sus subcarpetas (última versión de cada fichero).</p>
-      <button id="scanBtn">Analizar carpeta</button>
+      <span class="label">Data</span>
+      <h2>Load project data</h2>
+      <p class="sub">Scans the configured folder and all its subfolders, using the latest version of each file.</p>
+      <button class="btn" id="scanBtn">Scan folder</button>
       <p id="progress" class="muted"></p>
       <p id="scanError" class="error" hidden></p>
     </div>
 
-    <div class="card" id="approvalCard" hidden>
-      <h2>Ficheros aprobados por subcarpeta</h2>
-      <p class="muted">Estado de aprobación según Reviews (Approved).</p>
-      <table>
-        <thead><tr><th>Subcarpeta</th><th class="n">Aprobados</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
-        <tbody id="approvalBody"></tbody>
-        <tfoot id="approvalFoot"></tfoot>
-      </table>
-    </div>
+    <div id="dash" hidden>
+      <div class="kpis">
+        <div class="kpi"><span class="label">Files</span><b id="kFiles">0</b></div>
+        <div class="kpi"><span class="label">Approved</span><b class="y" id="kApproved">0%</b></div>
+        <div class="kpi"><span class="label">Uploaders</span><b id="kUsers">0</b></div>
+        <div class="kpi"><span class="label">Total size</span><b id="kSize">0</b></div>
+      </div>
 
-    <div class="card" id="attrCard" hidden>
-      <h2>Metadatos rellenos por subcarpeta</h2>
-      <label for="attrSelect" class="muted">Atributo:</label>
-      <select id="attrSelect"></select>
-      <table>
-        <thead><tr><th>Subcarpeta</th><th class="n">Rellenos</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
-        <tbody id="attrBody"></tbody>
-        <tfoot id="attrFoot"></tfoot>
-      </table>
+      <div class="toolbar">
+        <span class="label">Group by</span>
+        <div class="seg" id="groupSeg">
+          <button data-g="folder" class="on">Subfolder</button>
+          <button data-g="user">Uploader</button>
+        </div>
+        <span id="chips"></span>
+      </div>
+
+      <div class="card">
+        <span class="label">Uploaders</span>
+        <h2>Who uploaded the latest versions</h2>
+        <p class="sub">Select an uploader to isolate their files across the whole dashboard.</p>
+        <table>
+          <thead><tr><th>Uploader</th><th class="n">Files</th><th class="n">Approved</th><th>Share of files</th></tr></thead>
+          <tbody id="userBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <span class="label">Approvals</span>
+        <h2>Approved files</h2>
+        <p class="sub">Share of files with Approved status in Reviews, highest first.</p>
+        <table>
+          <thead><tr><th id="thApproval">Subfolder</th><th class="n">Approved</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
+          <tbody id="approvalBody"></tbody>
+          <tfoot id="approvalFoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="card" id="attrCard" hidden>
+        <span class="label">Metadata</span>
+        <h2>Filled metadata</h2>
+        <label for="attrSelect" class="sub">Attribute</label>
+        <select id="attrSelect"></select>
+        <table>
+          <thead><tr><th id="thAttr">Subfolder</th><th class="n">Filled</th><th class="n">Total</th><th class="n">%</th><th></th></tr></thead>
+          <tbody id="attrBody"></tbody>
+          <tfoot id="attrFoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <span class="label">File types</span>
+          <h2>By number of files</h2>
+          <p class="sub">Select a slice to filter by extension.</p>
+          <div class="donut" id="donutCount"></div>
+        </div>
+        <div class="card">
+          <span class="label">File types</span>
+          <h2>By size</h2>
+          <p class="sub">Storage used per extension.</p>
+          <div class="donut" id="donutSize"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <span class="label">Diagnostics</span>
+        <h2>Published to Sheets</h2>
+        <p class="sub">Temporary tools to find out how the API exposes "published to Sheets" for a PDF. Run both and send me the output.</p>
+        <button class="btn" id="diagPdf">Inspect one PDF</button>
+        <button class="btn ghost" id="diagSheets">Inspect Sheets API</button>
+        <pre id="diagOut" class="note" style="white-space:pre-wrap;max-height:360px;overflow:auto"></pre>
+      </div>
     </div>
   </section>
 </main>
 
 <script>
-/* ============ CONFIGURACIÓN ============
-   El client ID es público por diseño. NO añadas nunca un client secret. */
+/* ============ CONFIGURATION ============
+   The client ID is public by design. NEVER add a client secret. */
 const CONFIG = {
   clientId: "tu7iN8iEEsDtOzI3Bl1UBbiGYczE4OQ6XSAxXlXY1AASRa2d",
   scopes: "data:read user-profile:read",
@@ -115,7 +215,6 @@ async function login() {
   });
   location.assign(`${AUTH_URL}?${p}`);
 }
-
 async function tokenRequest(params) {
   const r = await fetch(TOKEN_URL, {
     method: "POST",
@@ -128,17 +227,15 @@ async function tokenRequest(params) {
   store.setItem("expires_at", String(Date.now() + (data.expires_in - 60) * 1000));
   if (data.refresh_token) store.setItem("refresh_token", data.refresh_token);
 }
-
 async function handleCallback() {
   const q = new URLSearchParams(location.search);
   if (!q.has("code") && !q.has("error")) return;
   history.replaceState({}, "", REDIRECT);
   if (q.has("error")) throw new Error(q.get("error_description") || q.get("error"));
-  if (q.get("state") !== store.getItem("pkce_state")) throw new Error("State no válido (posible CSRF).");
+  if (q.get("state") !== store.getItem("pkce_state")) throw new Error("Invalid state (possible CSRF).");
   await tokenRequest({ grant_type: "authorization_code", code: q.get("code"), redirect_uri: REDIRECT, code_verifier: store.getItem("pkce_verifier") });
   store.removeItem("pkce_verifier"); store.removeItem("pkce_state");
 }
-
 async function getToken() {
   if (Date.now() < Number(store.getItem("expires_at") || 0)) return store.getItem("access_token");
   const rt = store.getItem("refresh_token");
@@ -149,17 +246,17 @@ async function getToken() {
 }
 function logout(reload = true) { store.clear(); if (reload) location.reload(); }
 
-/* ---------- Llamadas autenticadas (restringidas al proyecto) ---------- */
+/* ---------- Authenticated calls (restricted to the project) ---------- */
 const ALLOWED = [
   u => u.pathname.includes(`/projects/${PID}`) || u.pathname.includes(`/projects/${PID_RAW}`),
   u => u.href === "https://api.userprofile.autodesk.com/userinfo",
 ];
 async function api(url, { method = "GET", body } = {}) {
   const u = new URL(url);
-  if (!ALLOWED.some(rule => rule(u))) throw new Error("Bloqueado: la app solo puede acceder al proyecto configurado.");
+  if (!ALLOWED.some(rule => rule(u))) throw new Error("Blocked: the app can only access the configured project.");
   for (let attempt = 0; attempt < 5; attempt++) {
     const token = await getToken();
-    if (!token) { showLogin(); throw new Error("Sesión caducada."); }
+    if (!token) { showLogin(); throw new Error("Session expired."); }
     const r = await fetch(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
@@ -172,9 +269,8 @@ async function api(url, { method = "GET", body } = {}) {
     if (!r.ok) { const e = new Error(`${r.status} ${r.statusText}`); e.status = r.status; throw e; }
     return r.status === 204 ? null : r.json();
   }
-  throw new Error("Demasiados reintentos (límite de peticiones).");
+  throw new Error("Too many retries (rate limit).");
 }
-
 async function pool(items, worker, size = CONFIG.concurrency) {
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
@@ -182,23 +278,34 @@ async function pool(items, worker, size = CONFIG.concurrency) {
   }));
 }
 
-/* ---------- Data Management: carpetas y ficheros ---------- */
+/* ---------- Data Management ---------- */
+const extOf = (name, fileType) => {
+  const m = /\.([A-Za-z0-9]+)$/.exec(name || "");
+  return (m ? m[1] : fileType || "none").toLowerCase();
+};
 async function listFolder(folderUrn) {
   const folders = [], files = [];
   let url = `${BASE}/data/v1/projects/${PID}/folders/${encodeURIComponent(folderUrn)}/contents?page[limit]=200`;
   while (url) {
     const d = await api(url);
-    const tipByItem = {};
-    for (const v of d.included || []) if (v.type === "versions") tipByItem[v.relationships?.item?.data?.id] = v.id;
+    const tip = {};
+    for (const v of d.included || []) if (v.type === "versions") tip[v.relationships?.item?.data?.id] = v;
     for (const x of d.data || []) {
       if (x.type === "folders") folders.push({ id: x.id, name: x.attributes.displayName || x.attributes.name });
-      else if (x.type === "items" && tipByItem[x.id]) files.push({ name: x.attributes.displayName, versionId: tipByItem[x.id] });
+      else if (x.type === "items" && tip[x.id]) {
+        const v = tip[x.id], a = v.attributes || {};
+        files.push({
+          name: x.attributes.displayName, versionId: v.id,
+          user: a.createUserName || a.lastModifiedUserName || "Unknown",
+          ext: extOf(x.attributes.displayName, a.fileType),
+          size: Number(a.storageSize) || 0,
+        });
+      }
     }
     url = d.links?.next?.href || null;
   }
   return { folders, files };
 }
-
 async function collectFiles(folderUrn, out = []) {
   const { folders, files } = await listFolder(folderUrn);
   out.push(...files);
@@ -206,10 +313,9 @@ async function collectFiles(folderUrn, out = []) {
   return out;
 }
 
-/* ---------- Reviews: estado de aprobación ---------- */
+/* ---------- Reviews ---------- */
 async function approvalOf(versionId) {
-  const enc = encodeURIComponent(versionId);
-  const base = `${BASE}/construction/reviews/v1/projects/${PID_RAW}/versions/${enc}`;
+  const base = `${BASE}/construction/reviews/v1/projects/${PID_RAW}/versions/${encodeURIComponent(versionId)}`;
   for (const suffix of ["approval-statuses", "approval-status"]) {
     try {
       const d = await api(`${base}/${suffix}`);
@@ -220,7 +326,7 @@ async function approvalOf(versionId) {
   return null;
 }
 
-/* ---------- Atributos personalizados ---------- */
+/* ---------- Custom attributes ---------- */
 async function attributeDefinitions() {
   const out = [];
   let url = `${BASE}/bim360/docs/v1/projects/${PID_RAW}/folders/${encodeURIComponent(CONFIG.rootFolder)}/custom-attribute-definitions?limit=200`;
@@ -241,81 +347,162 @@ async function attributeValues(versionIds) {
   return map;
 }
 
-/* ---------- Estado y render ---------- */
-let groups = [];      // [{ name, files:[{name, versionId}] }]
-let approvals = {};   // versionId -> "APPROVED" | ...
-let attrValues = {};  // versionId -> [{id,name,value}]
-let defs = [];
+/* ---------- State ---------- */
+let files = [], approvals = {}, attrValues = {}, defs = [];
+const state = { groupBy: "folder", user: null, ext: null };
 
 const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
-function rowHtml(name, a, b, cls = "") {
-  const p = pct(a, b);
-  return `<tr><td>${esc(name)}</td><td class="n">${a}</td><td class="n">${b}</td><td class="n">${p}%</td>
-          <td><div class="bar ${cls}"><span style="width:${p}%"></span></div></td></tr>`;
-}
-function renderApproval() {
-  let A = 0, T = 0;
-  $("approvalBody").innerHTML = groups.map(g => {
-    const a = g.files.filter(f => approvals[f.versionId] === "APPROVED").length;
-    A += a; T += g.files.length;
-    return rowHtml(g.name, a, g.files.length);
-  }).join("");
-  $("approvalFoot").innerHTML = rowHtml("Total", A, T);
-  $("approvalCard").hidden = false;
-}
-function isFilled(versionId, def) {
-  const a = (attrValues[versionId] || []).find(x => String(x.id) === String(def.id) || x.name === def.name);
+const isApproved = f => approvals[f.versionId] === "APPROVED";
+function isFilled(f, def) {
+  const a = (attrValues[f.versionId] || []).find(x => String(x.id) === String(def.id) || x.name === def.name);
   const v = a?.value;
   return !(v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length));
 }
-function renderAttr() {
-  const def = defs.find(d => String(d.id) === $("attrSelect").value);
-  if (!def) return;
-  let A = 0, T = 0;
-  $("attrBody").innerHTML = groups.map(g => {
-    const a = g.files.filter(f => isFilled(f.versionId, def)).length;
-    A += a; T += g.files.length;
-    return rowHtml(g.name, a, g.files.length, "blue");
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  const u = ["KB","MB","GB","TB"]; let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return n.toFixed(n >= 100 ? 0 : 1) + " " + u[i];
+}
+const keyOf = f => state.groupBy === "folder" ? f.folder : f.user;
+const byUser = list => !state.user ? list : list.filter(f => f.user === state.user);
+const byExt  = list => !state.ext  ? list : list.filter(f => f.ext === state.ext);
+const visible = () => byExt(byUser(files));
+
+/* ---------- Rendering ---------- */
+function rankRows(list, predicate) {
+  const m = new Map();
+  for (const f of list) {
+    const k = keyOf(f), g = m.get(k) || { name: k, a: 0, b: 0 };
+    g.b++; if (predicate(f)) g.a++; m.set(k, g);
+  }
+  return [...m.values()].sort((x, y) => pct(y.a, y.b) - pct(x.a, x.b) || y.b - x.b || x.name.localeCompare(y.name));
+}
+function tableRows(rows, cls) {
+  const clickable = state.groupBy === "user";
+  return rows.map(r => {
+    const p = pct(r.a, r.b), attrs = clickable ? ` data-user="${esc(r.name)}"${state.user === r.name ? ' class="sel"' : ""}` : "";
+    return `<tr${attrs}><td>${esc(r.name)}</td><td class="n">${r.a}</td><td class="n">${r.b}</td><td class="n pct">${p}%</td>
+      <td><div class="bar ${cls}"><span style="width:${p}%"></span></div></td></tr>`;
   }).join("");
-  $("attrFoot").innerHTML = rowHtml("Total", A, T, "blue");
+}
+function footRow(a, b, cls) {
+  const p = pct(a, b);
+  return `<tr><td>Total</td><td class="n">${a}</td><td class="n">${b}</td><td class="n pct">${p}%</td><td><div class="bar ${cls}"><span style="width:${p}%"></span></div></td></tr>`;
 }
 
+const PALETTE = ["#FFFF00", "#1D91D0", "#D5D5CB", "#4EB3E9", "#A3A3A3", "#858585", "#666666", "#E8E8E8"];
+function donut(el, list, valueOf, fmt, totalLabel) {
+  const m = new Map();
+  for (const f of list) m.set(f.ext, (m.get(f.ext) || 0) + valueOf(f));
+  let items = [...m].map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+  if (items.length > 7) {
+    const other = items.slice(7).reduce((s, i) => s + i.v, 0);
+    items = [...items.slice(0, 7), { k: null, v: other }];
+  }
+  const total = items.reduce((s, i) => s + i.v, 0);
+  if (!total) { el.innerHTML = '<p class="muted">No data.</p>'; return; }
+  const R = 70, C = 2 * Math.PI * R; let cum = 0;
+  const arcs = items.map((i, n) => {
+    const len = i.v / total * C, color = PALETTE[n % PALETTE.length];
+    const dim = state.ext && i.k !== state.ext ? ' style="opacity:.3"' : "";
+    const c = `<circle class="s" cx="110" cy="110" r="${R}" fill="none" stroke="${color}" stroke-width="32"
+      stroke-dasharray="${Math.max(len - 2, 0)} ${C - Math.max(len - 2, 0)}" stroke-dashoffset="${-cum}"
+      transform="rotate(-90 110 110)" ${i.k ? `data-ext="${esc(i.k)}"` : ""}${dim}><title>${i.k ? "." + esc(i.k) : "Other"}: ${fmt(i.v)}</title></circle>`;
+    cum += len; return c;
+  }).join("");
+  const legend = items.map((i, n) => {
+    const dim = state.ext && i.k !== state.ext ? " dim" : "";
+    return `<li class="${dim}" ${i.k ? `data-ext="${esc(i.k)}"` : ""}><i style="background:${PALETTE[n % PALETTE.length]}"></i>${i.k ? "." + esc(i.k) : "Other"}<span>${fmt(i.v)} · ${pct(i.v, total)}%</span></li>`;
+  }).join("");
+  el.innerHTML = `<svg viewBox="0 0 220 220" role="img" aria-label="${esc(totalLabel)}">${arcs}
+    <text class="center" x="110" y="112">${fmt(total)}</text><text class="center2" x="110" y="132">${esc(totalLabel)}</text></svg>
+    <ul class="legend">${legend}</ul>`;
+}
+
+function render() {
+  const vis = visible();
+  const label = state.groupBy === "folder" ? "Subfolder" : "Uploader";
+  $("thApproval").textContent = label; $("thAttr").textContent = label;
+
+  // KPIs
+  const appr = vis.filter(isApproved).length;
+  $("kFiles").textContent = vis.length;
+  $("kApproved").textContent = pct(appr, vis.length) + "%";
+  $("kUsers").textContent = new Set(vis.map(f => f.user)).size;
+  $("kSize").textContent = fmtBytes(vis.reduce((s, f) => s + f.size, 0));
+
+  // chips
+  $("chips").innerHTML =
+    (state.user ? `<button class="chip" data-clear="user">Uploader: ${esc(state.user)}</button> ` : "") +
+    (state.ext ? `<button class="chip" data-clear="ext">Type: .${esc(state.ext)}</button>` : "");
+  document.querySelectorAll("#groupSeg button").forEach(b => b.classList.toggle("on", b.dataset.g === state.groupBy));
+
+  // uploaders panel (keeps all uploaders visible; reacts to extension filter only)
+  const forUsers = byExt(files), um = new Map();
+  for (const f of forUsers) { const g = um.get(f.user) || { name: f.user, b: 0, a: 0 }; g.b++; if (isApproved(f)) g.a++; um.set(f.user, g); }
+  const ulist = [...um.values()].sort((a, b) => b.b - a.b || a.name.localeCompare(b.name));
+  $("userBody").innerHTML = ulist.map(u => `<tr data-user="${esc(u.name)}"${state.user === u.name ? ' class="sel"' : ""}>
+      <td>${esc(u.name)}</td><td class="n">${u.b}</td><td class="n">${pct(u.a, u.b)}%</td>
+      <td><div class="bar warm"><span style="width:${pct(u.b, forUsers.length)}%"></span></div></td></tr>`).join("");
+
+  // approvals
+  $("approvalBody").innerHTML = tableRows(rankRows(vis, isApproved), "");
+  $("approvalFoot").innerHTML = footRow(appr, vis.length, "");
+
+  // metadata
+  const def = defs.find(d => String(d.id) === $("attrSelect").value);
+  if (def) {
+    const filled = vis.filter(f => isFilled(f, def)).length;
+    $("attrBody").innerHTML = tableRows(rankRows(vis, f => isFilled(f, def)), "blue");
+    $("attrFoot").innerHTML = footRow(filled, vis.length, "blue");
+  }
+
+  // donuts (react to uploader filter, not to their own extension filter)
+  const forDonut = byUser(files);
+  donut($("donutCount"), forDonut, () => 1, n => String(n), "files");
+  donut($("donutSize"), forDonut, f => f.size, fmtBytes, "total");
+}
+
+/* ---------- Scan ---------- */
 async function scan() {
   const btn = $("scanBtn"), prog = $("progress"), err = $("scanError");
-  btn.disabled = true; err.hidden = true; $("approvalCard").hidden = true; $("attrCard").hidden = true;
+  btn.disabled = true; err.hidden = true; $("dash").hidden = true;
+  state.user = null; state.ext = null;
   try {
-    prog.textContent = "Leyendo carpetas…";
+    prog.textContent = "Reading folders…";
     const root = await listFolder(CONFIG.rootFolder);
-    groups = [];
-    if (root.files.length) groups.push({ name: "(ficheros en la carpeta raíz)", files: root.files });
-    await pool(root.folders, async f => {
-      groups.push({ name: f.name, files: await collectFiles(f.id) });
+    files = [];
+    root.files.forEach(f => files.push({ ...f, folder: "(root folder)" }));
+    await pool(root.folders, async fo => {
+      (await collectFiles(fo.id)).forEach(f => files.push({ ...f, folder: fo.name }));
     }, 3);
-    groups.sort((a, b) => a.name.localeCompare(b.name, "es", { numeric: true }));
-    const all = [...new Set(groups.flatMap(g => g.files.map(f => f.versionId)))];
+    const all = [...new Set(files.map(f => f.versionId))];
 
     let done = 0, failed = 0;
     approvals = {};
     await pool(all, async v => {
       try { approvals[v] = await approvalOf(v); } catch { failed++; }
-      prog.textContent = `Consultando aprobaciones… ${++done}/${all.length}`;
+      prog.textContent = `Checking approvals… ${++done}/${all.length}`;
     });
-    renderApproval();
 
-    prog.textContent = "Leyendo atributos…";
-    defs = await attributeDefinitions();
-    attrValues = await attributeValues(all);
+    prog.textContent = "Reading metadata…";
+    try {
+      defs = await attributeDefinitions();
+      attrValues = await attributeValues(all);
+    } catch (e) { defs = []; attrValues = {}; }
     $("attrSelect").innerHTML = defs.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join("");
     $("attrCard").hidden = !defs.length;
-    if (defs.length) renderAttr();
 
-    prog.textContent = `Listo: ${all.length} ficheros en ${groups.length} grupos.` + (failed ? ` ${failed} sin estado de aprobación por error.` : "");
+    $("dash").hidden = false;
+    render();
+    prog.textContent = `Done: ${all.length} files.` + (failed ? ` ${failed} without approval status due to errors.` : "");
   } catch (e) {
     err.textContent = "Error: " + e.message; err.hidden = false; prog.textContent = "";
   } finally { btn.disabled = false; }
 }
 
-/* ---------- UI ---------- */
+/* ---------- UI events ---------- */
 function showError(msg) { $("authError").textContent = msg; $("authError").hidden = false; }
 function showLogin() { $("loginView").hidden = false; $("appView").hidden = true; $("userBox").hidden = true; }
 async function showApp() {
@@ -325,7 +512,35 @@ async function showApp() {
 $("loginBtn").onclick = login;
 $("logoutBtn").onclick = () => logout();
 $("scanBtn").onclick = scan;
-$("attrSelect").onchange = renderAttr;
+$("attrSelect").onchange = render;
+$("diagPdf").onclick = async () => {
+  const out = $("diagOut"), pdf = files.find(f => f.ext === "pdf");
+  if (!pdf) { out.textContent = "No PDF found in the scanned files."; return; }
+  out.textContent = "Loading…";
+  try {
+    const d = await api(`${BASE}/data/v1/projects/${PID}/versions/${encodeURIComponent(pdf.versionId)}`);
+    out.textContent = `File: ${pdf.name}\n` + JSON.stringify(d.data, null, 2);
+  } catch (e) { out.textContent = "Error: " + e.message; }
+};
+$("diagSheets").onclick = async () => {
+  const out = $("diagOut"); out.textContent = "Loading…";
+  const r = {};
+  for (const [k, p] of [["versionSets", "version-sets?limit=3"], ["sheets", "sheets?limit=3"], ["uploads", "uploads?limit=3"]]) {
+    try { r[k] = await api(`${BASE}/construction/sheets/v1/projects/${PID_RAW}/${p}`); }
+    catch (e) { r[k] = "Error: " + e.message; }
+  }
+  out.textContent = JSON.stringify(r, null, 2);
+};
+document.addEventListener("click", e => {
+  const g = e.target.closest("#groupSeg button");
+  if (g) { state.groupBy = g.dataset.g; return render(); }
+  const c = e.target.closest("[data-clear]");
+  if (c) { state[c.dataset.clear] = null; return render(); }
+  const u = e.target.closest("[data-user]");
+  if (u) { state.user = state.user === u.dataset.user ? null : u.dataset.user; return render(); }
+  const x = e.target.closest("[data-ext]");
+  if (x) { state.ext = state.ext === x.dataset.ext ? null : x.dataset.ext; return render(); }
+});
 
 (async function init() {
   try { await handleCallback(); } catch (e) { showLogin(); return showError(e.message); }
